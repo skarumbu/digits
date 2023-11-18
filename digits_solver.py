@@ -10,10 +10,4 @@ def solve_digits(input, goal):
             input[row][column] = nodes.create_node_without_neighbors(input[row][column], [], row, column)
 
     nodes.create_neighbors()
-    print(input)
     return nodes.solve(goal)
-
-matrix = [[0]*3 for i in range(2)]
-matrix[0] = [15, 3, 2]
-matrix[1] = [90, 1, 32]
-print(solve_digits(matrix, 9))

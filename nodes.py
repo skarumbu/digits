@@ -2,7 +2,7 @@ class Nodes:
     def __init__(self, height, width):
         self.nodes = [[0]*width for i in range(height)]
         self.solutions = []
-        self.debug = True
+        self.debug = False
 
     def create_node_without_neighbors(self, value, neighbors, row, column):
         self.nodes[row][column] = Node(value, neighbors)
@@ -25,6 +25,8 @@ class Nodes:
         for row in range(len(self.nodes)):
             for column in range(len(self.nodes[row])): 
                 # Try to solve from every starting point
+                if self.debug:
+                    print("Starting new try at " + str(row) + ", " + str(column))
                 self.solve_from_node(goal, row, column, self.nodes[row][column].value, "")
                 self.mark_nodes_unvisited()
         return self.solutions
@@ -74,4 +76,4 @@ class Node:
         self.neighbors.clear()
 
     def __repr__(self):
-        return ("Value: " + str(self.value) + ", number of neighbors: " + str(len(self.neighbors)))
+       return str(self.value)
