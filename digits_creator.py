@@ -13,8 +13,3 @@ def create_digits(height, width):
         solutions = solve_digits(matrix, goal)
         if (len(solutions) > 1):
             return matrix, goal, solutions
-
-matrix, goal, solutions = create_digits(2,3)
-print(matrix)
-print(goal)
-print(solutions)
