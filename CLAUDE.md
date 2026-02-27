@@ -48,6 +48,11 @@ python -c "from digits_solver import solve_digits; print(solve_digits([[3,40,1],
 
 Difficulty is tuned by: smaller numbers + lower goals + more required solutions = easier; higher goals + solution cap = harder (forces multiplication chains, fewer valid paths).
 
+**Deployment** (`.github/workflows/deploy.yml`):
+- GitHub Actions workflow triggers on every push to `main` and deploys to `digits-api-prod-hwbxtkz6lsfoq` using the `Azure/functions-action`.
+- Requires the `AZURE_FUNCTIONAPP_PUBLISH_PROFILE` secret set in the GitHub repo (download from Azure Portal → Function App → Get publish profile).
+- Uses Python 3.11 to match the Azure Function App runtime.
+
 **Legacy** (`handler.py`):
 - Original AWS Lambda handler — writes a single puzzle to a DynamoDB table. Superseded by the Azure Functions approach; kept for reference.
 
