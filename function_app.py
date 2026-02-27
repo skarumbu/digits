@@ -104,6 +104,13 @@ def DigitsGetter(req: func.HttpRequest) -> func.HttpResponse:
 
         if puzzles is None:
             puzzles = _generate_puzzles()
+            try:
+                table_client = _get_table_client()
+                entity = {"PartitionKey": PARTITION_KEY, "RowKey": date_str, **puzzles}
+                table_client.upsert_entity(entity=entity, mode=UpdateMode.REPLACE)
+                logging.info("DigitsGetter: cached on-demand puzzles for %s", date_str)
+            except Exception:
+                logging.exception("DigitsGetter: failed to cache puzzles, continuing")
 
         return func.HttpResponse(
             body=json.dumps(_build_response_body(puzzles)),
