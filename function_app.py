@@ -2,7 +2,9 @@ import azure.functions as func
 import json
 import logging
 import os
+import time
 from datetime import datetime, timezone
+from uuid import uuid4
 
 from azure.data.tables import TableServiceClient, UpdateMode
 from azure.core.exceptions import ResourceNotFoundError
@@ -28,6 +30,26 @@ def _get_table_client():
     service_client = TableServiceClient.from_connection_string(conn_str)
     service_client.create_table_if_not_exists(TABLE_NAME)
     return service_client.get_table_client(TABLE_NAME)
+
+
+def _write_metrics(endpoint: str, status: int, duration_ms: float, error: str = ""):
+    try:
+        conn_str = os.environ["TABLE_STORAGE_CONNECTION_STRING"]
+        service_client = TableServiceClient.from_connection_string(conn_str)
+        service_client.create_table_if_not_exists("metrics")
+        metrics_client = service_client.get_table_client("metrics")
+        metrics_row = {
+            "PartitionKey": "metrics",
+            "RowKey": f"{datetime.utcnow().isoformat().replace(':', '-')}-{str(uuid4())[:8]}",
+            "service": "digits",
+            "endpoint": endpoint,
+            "status": status,
+            "duration_ms": duration_ms,
+            "error": error,
+        }
+        metrics_client.upsert_entity(entity=metrics_row)
+    except Exception:
+        logging.exception("Failed to write metrics for %s", endpoint)
 
 
 def _generate_puzzles() -> dict:
@@ -74,22 +96,31 @@ def _build_response_body(puzzles: dict) -> dict:
 # Timer Trigger: runs once daily at midnight UTC
 @app.timer_trigger(schedule="0 0 0 * * *", arg_name="mytimer", run_on_startup=False)
 def DailyDigitsGenerator(mytimer: func.TimerRequest) -> None:
+    start = time.time()
     date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    if mytimer.past_due:
-        logging.warning("DailyDigitsGenerator: timer is past due. date=%s", date_str)
+    try:
+        if mytimer.past_due:
+            logging.warning("DailyDigitsGenerator: timer is past due. date=%s", date_str)
 
-    logging.info("DailyDigitsGenerator: generating puzzles for %s", date_str)
-    puzzles = _generate_puzzles()
+        logging.info("DailyDigitsGenerator: generating puzzles for %s", date_str)
+        puzzles = _generate_puzzles()
 
-    table_client = _get_table_client()
-    entity = {"PartitionKey": PARTITION_KEY, "RowKey": date_str, **puzzles}
-    table_client.upsert_entity(entity=entity, mode=UpdateMode.REPLACE)
-    logging.info("DailyDigitsGenerator: stored puzzles for %s", date_str)
+        table_client = _get_table_client()
+        entity = {"PartitionKey": PARTITION_KEY, "RowKey": date_str, **puzzles}
+        table_client.upsert_entity(entity=entity, mode=UpdateMode.REPLACE)
+        logging.info("DailyDigitsGenerator: stored puzzles for %s", date_str)
+
+        _write_metrics("DailyDigitsGenerator", 200, round((time.time() - start) * 1000, 1))
+    except Exception as e:
+        logging.exception("DailyDigitsGenerator: error")
+        _write_metrics("DailyDigitsGenerator", 500, round((time.time() - start) * 1000, 1), str(e))
+        raise
 
 
 # HTTP Trigger: serves today's puzzles from Table Storage (fallback: on-demand)
 @app.route(route="DigitsGetter", methods=["GET"])
 def DigitsGetter(req: func.HttpRequest) -> func.HttpResponse:
+    start = time.time()
     try:
         date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         puzzles  = None
@@ -112,6 +143,8 @@ def DigitsGetter(req: func.HttpRequest) -> func.HttpResponse:
             except Exception:
                 logging.exception("DigitsGetter: failed to cache puzzles, continuing")
 
+        _write_metrics("DigitsGetter", 200, round((time.time() - start) * 1000, 1))
+
         return func.HttpResponse(
             body=json.dumps(_build_response_body(puzzles)),
             status_code=200,
@@ -121,6 +154,7 @@ def DigitsGetter(req: func.HttpRequest) -> func.HttpResponse:
 
     except Exception as e:
         logging.exception("DigitsGetter: error")
+        _write_metrics("DigitsGetter", 500, round((time.time() - start) * 1000, 1), str(e))
         return func.HttpResponse(
             body=json.dumps({"error": str(e)}),
             status_code=500,
